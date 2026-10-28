@@ -152,8 +152,8 @@ select.filter-select:focus { outline: none; border-color: var(--accent); }
   text-transform: uppercase; letter-spacing: .08em; padding: 6px 6px 3px; }
 
 /* ─── TABLE CONTAINER ─── */
-.table-wrap { overflow: auto; height: calc(100vh - 106px); }
-table { border-collapse: collapse; min-width: 100%; white-space: nowrap; }
+.table-wrap { overflow: auto; height: calc(100vh - 106px); scrollbar-gutter: stable; }
+table { border-collapse: separate; border-spacing: 0; min-width: 100%; white-space: nowrap; }
 thead th { position: sticky; top: 0; z-index: 10; background: var(--surface);
   border-bottom: 2px solid var(--border); padding: 8px 10px;
   font-size: 11px; font-weight: 600; color: var(--text-muted);
@@ -189,11 +189,25 @@ table.instructor-view td:not(.sticky):not(.expand-col) { width: 140px; min-width
 table.instructor-view thead th:not(.sticky):not(.expand-col) {
   white-space: normal; word-break: break-word;
   vertical-align: middle; line-height: 1.3; text-align: center; }
+/* Freeze expand caret alongside instructor name in instructor view */
+table.instructor-view th.expand-col,
+table.instructor-view td.expand-col { position: sticky; left: 0; z-index: 5; background: #ffffff; }
+table.instructor-view th.expand-col { z-index: 15; }
+table.instructor-view th.sticky,
+table.instructor-view td.sticky  { left: 36px; width: 220px; min-width: 220px; max-width: 220px; }
+table.instructor-view th.sticky2,
+table.instructor-view td.sticky2 { left: 256px; }
+table.instructor-view th.sticky3,
+table.instructor-view td.sticky3 { left: 346px; }
+/* Even-row and hover backgrounds for frozen expand col */
+table.instructor-view tbody tr.row-even td.expand-col { background: #EEF3F9; }
+table.instructor-view tbody tr:hover td.expand-col { background: #E8F3FF !important; }
+table.instructor-view tr.section-row td.expand-col { background: #DFE8F4 !important; }
 /* Right-align shadow on frozen columns */
 td.sticky2, th.sticky2 { box-shadow: 3px 0 6px -2px rgba(0,0,0,0.08); }
 
-tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
-tbody tr td { background: #ffffff; }
+tbody tr { transition: background .1s; }
+tbody tr td { background: #ffffff; border-bottom: 1px solid var(--border); }
 tbody tr.row-even td { background: #EEF3F9; }
 tbody tr.row-even td.sticky,
 tbody tr.row-even td.sticky2,
@@ -203,7 +217,7 @@ tbody tr:hover td.sticky, tbody tr:hover td.sticky2, tbody tr:hover td.sticky3 {
   background: #E8F3FF !important; }
 
 td { padding: 7px 10px; vertical-align: middle; max-width: 220px; }
-td.num { text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
+td.num { text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 14px; }
 td.truncate { overflow: hidden; text-overflow: ellipsis; text-align: left; }
 th.sticky, th.sticky2, th.sticky3 { text-align: left; }
 
@@ -223,8 +237,7 @@ th.sticky, th.sticky2, th.sticky3 { text-align: left; }
 tr.section-row td { background: #DFE8F4 !important; border-bottom: 1px solid #CBD5E5; }
 tr.section-row td.sticky, tr.section-row td.sticky2, tr.section-row td.sticky3 {
   background: #DFE8F4 !important; }
-tr.section-row { border-bottom: 1px solid var(--border); }
-tr.section-row td:first-child { padding-left: 32px; }
+tr.section-row td.expand-col { padding-left: 0; }
 tr.section-row.hidden { display: none; }
 
 /* ─── EMPTY STATE ─── */
@@ -715,11 +728,34 @@ function updateDropdownBtn(type) {
 
 function toggleFilterDropdown(type) {
   const panel = document.getElementById(type + 'DropdownPanel');
+  const btn   = document.getElementById(type + 'DropdownBtn');
   const isOpen = panel.classList.contains('open');
   // Close all panels first
-  document.querySelectorAll('.filter-dropdown-panel').forEach(p => p.classList.remove('open'));
+  document.querySelectorAll('.filter-dropdown-panel').forEach(p => {
+    p.classList.remove('open');
+    p.style.position = '';
+    p.style.top = '';
+    p.style.left = '';
+    p.style.right = '';
+  });
   document.getElementById('colsPanel').classList.remove('open');
-  if (!isOpen) panel.classList.add('open');
+  if (!isOpen) {
+    panel.classList.add('open');
+    // Position as fixed to avoid any layout shift / scrollbar
+    const rect = btn.getBoundingClientRect();
+    panel.style.position = 'fixed';
+    panel.style.top = (rect.bottom + 4) + 'px';
+    panel.style.left = rect.left + 'px';
+    panel.style.right = 'auto';
+    // After render, flip left if panel overflows right edge
+    requestAnimationFrame(() => {
+      const pr = panel.getBoundingClientRect();
+      if (pr.right > window.innerWidth - 8) {
+        panel.style.left = 'auto';
+        panel.style.right = (window.innerWidth - rect.right) + 'px';
+      }
+    });
+  }
 }
 
 function filterDropdownSearch(type, query) {
@@ -761,7 +797,13 @@ function selectAllDropdown(type) {
 // Close dropdowns when clicking outside
 document.addEventListener('click', e => {
   if (!e.target.closest('.filter-dropdown') && !e.target.closest('.cols-dropdown')) {
-    document.querySelectorAll('.filter-dropdown-panel').forEach(p => p.classList.remove('open'));
+    document.querySelectorAll('.filter-dropdown-panel').forEach(p => {
+      p.classList.remove('open');
+      p.style.position = '';
+      p.style.top = '';
+      p.style.left = '';
+      p.style.right = '';
+    });
     document.getElementById('colsPanel').classList.remove('open');
   }
 });
@@ -1024,14 +1066,36 @@ function renderInstructorRows(data, cols, colorMaps, body) {
         td.classList.add('expand-col');
         td.innerHTML = `<button class="expand-btn" onclick="toggleExpand('${row.instructor.replace(/'/g,"\\'")}', this)">${expandedRows.has(row.instructor) ? '▼' : '▶'}</button>`;
       } else if (col.key === 'instructor') {
-        td.textContent = row.instructor;
-        td.title = row.instructor;
         td.className = (col.sticky||'') + ' truncate';
-        td.style.maxWidth = '180px';
-        td.style.fontWeight = '700';
+        td.style.maxWidth = '220px';
         if (QUAL_DATA[row.instructor]) {
           td.classList.add('instr-name-link');
           td.onclick = () => openQualModal(row.instructor);
+        }
+        const nameEl = document.createElement('div');
+        nameEl.textContent = row.instructor;
+        nameEl.title = row.instructor;
+        nameEl.style.fontWeight = '700';
+        nameEl.style.overflow = 'hidden';
+        nameEl.style.textOverflow = 'ellipsis';
+        td.appendChild(nameEl);
+        // Course code chips for instructors teaching multiple courses
+        if (row.sections && row.sections.length > 0) {
+          const uniqueCodes = [...new Set(row.sections.map(s => {
+            const c = s.course_code || '';
+            return c.endsWith(' L') ? c.slice(0, -2).trim() : c;
+          }).filter(Boolean))].sort();
+          if (uniqueCodes.length > 0) {
+            const chipWrap = document.createElement('div');
+            chipWrap.style.cssText = 'display:flex;flex-wrap:nowrap;gap:3px;margin-top:3px;';
+            uniqueCodes.forEach(c => {
+              const chip = document.createElement('span');
+              chip.style.cssText = 'font-size:9px;font-weight:600;padding:1px 6px;border-radius:10px;background:rgba(1,149,255,0.10);color:#0159CB;line-height:1.5;white-space:nowrap;';
+              chip.textContent = c;
+              chipWrap.appendChild(chip);
+            });
+            td.appendChild(chipWrap);
+          }
         }
       } else if (col.key === 'tier') {
         td.innerHTML = tierBadge(row.tier);
@@ -1039,11 +1103,16 @@ function renderInstructorRows(data, cols, colorMaps, body) {
       } else {
         const v = row[col.key];
         td.classList.add('num');
-        td.innerHTML = fmt(v, col);
-        const bg = colorMaps[col.key] ? colorMaps[col.key](v) : null;
-        if (bg && col.type !== 'composite') {
-          if (col.type === 'volume') td.style.background = bg;
-          else { td.style.background = bg + '40'; td.style.color = bg; }
+        // Don't show composite score for Insufficient Data instructors
+        if (col.key === 'composite' && row.tier === 'Insufficient Data') {
+          td.innerHTML = '<span style="color:var(--text-dim)">—</span>';
+        } else {
+          td.innerHTML = fmt(v, col);
+          const bg = colorMaps[col.key] ? colorMaps[col.key](v) : null;
+          if (bg && col.type !== 'composite') {
+            if (col.type === 'volume') td.style.background = bg;
+            else { td.style.background = bg + '40'; td.style.color = bg; }
+          }
         }
       }
       tr.appendChild(td);
@@ -1061,7 +1130,7 @@ function renderInstructorRows(data, cols, colorMaps, body) {
           const td = document.createElement('td');
           if (col.sticky) td.className = col.sticky;
           if (col.key === 'expand') {
-            // indent spacer
+            td.classList.add('expand-col'); // keep it sticky so it blocks scrolled content
           } else if (col.key === 'instructor') {
             td.className = (col.sticky||'') + ' truncate';
             td.style.paddingLeft = '28px';
